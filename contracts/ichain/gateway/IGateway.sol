@@ -25,6 +25,8 @@ interface IGateway {
         uint256 totalLiquidity;
         int256  cumulativeTimePerLiquidity;
         uint256 gatewayRequestId;
+        uint256 dChainExecutionFeePerRequest;
+        uint256 totalIChainExecutionFee;
     }
 
     struct BTokenState {
@@ -42,6 +44,8 @@ interface IGateway {
         uint256 liquidity;
         uint256 cumulativeTime;
         uint256 lastCumulativeTimePerLiquidity;
+        uint256 lastRequestIChainExecutionFee;
+        uint256 cumulativeUnusedIChainExecutionFee;
     }
 
     struct TdState {
@@ -51,6 +55,8 @@ interface IGateway {
         int256  b0Amount;
         int256  lastCumulativePnlOnEngine;
         bool    singlePosition;
+        uint256 lastRequestIChainExecutionFee;
+        uint256 cumulativeUnusedIChainExecutionFee;
     }
 
     struct VarOnExecuteUpdateLiquidity {
@@ -75,5 +81,13 @@ interface IGateway {
         uint256 pTokenId;
         int256  cumulativePnlOnEngine;
     }
+
+    function getGatewayState() external view returns (GatewayState memory s);
+
+    function getBTokenState(address bToken) external view returns (BTokenState memory s);
+
+    function getLpState(uint256 lTokenId) external view returns (LpState memory s);
+
+    function getTdState(uint256 pTokenId) external view returns (TdState memory s);
 
 }

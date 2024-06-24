@@ -2,6 +2,7 @@
 
 pragma solidity >=0.8.0 <0.9.0;
 
+import '../../oracle/IOracle.sol';
 import '../../library/ETHAndERC20.sol';
 import '../../library/SafeMath.sol';
 import './VaultStorage.sol';
@@ -10,19 +11,25 @@ import './VaultStorage.sol';
  * @title Vault Implementation with NO external custodian
  * @dev This contract serves as a vault for managing deposits without any external custodian.
  */
-contract VaultImplementationNone is VaultStorage {
+contract VaultImplementationNoneCapped is VaultStorage {
 
     using ETHAndERC20 for address;
     using SafeMath for uint256;
+    using SafeMath for int256;
 
     error OnlyGateway();
     error TinyShareOfInitDeposit();
+    error ExceedAssetCap();
 
     uint256 constant UONE = 1e18;
     address constant assetETH = address(1);
 
     address public immutable gateway;
     address public immutable asset;   // Asset token, e.g. DERI
+    uint256 public immutable tradersAssetAmountCap; // in asset decimals
+    uint256 public immutable tradersAssetValueCap;  // in 18 decimals
+    address public immutable oracle;
+    bytes32 public immutable oracleId;
 
     modifier _onlyGateway_() {
         if (msg.sender != gateway) {
@@ -31,9 +38,20 @@ contract VaultImplementationNone is VaultStorage {
         _;
     }
 
-    constructor (address gateway_, address asset_) {
+    constructor (
+        address gateway_,
+        address asset_,
+        uint256 tradersAssetAmountCap_,
+        uint256 tradersAssetValueCap_,
+        address oracle_,
+        bytes32 oracleId_
+    ) {
         gateway = gateway_;
         asset = asset_;
+        tradersAssetAmountCap = tradersAssetAmountCap_;
+        tradersAssetValueCap = tradersAssetValueCap_;
+        oracle = oracle_;
+        oracleId = oracleId_;
     }
 
     // @notice Get the asset token balance belonging to a specific 'dTokenId'
@@ -42,6 +60,10 @@ contract VaultImplementationNone is VaultStorage {
         if (stAmount != 0) {
             balance = asset.balanceOfThis() * stAmount / stTotalAmount;
         }
+    }
+
+    function isTrader(uint256 dTokenId) public pure returns (bool) {
+        return dTokenId >= (2 << 248);
     }
 
     /**
@@ -73,6 +95,18 @@ contract VaultImplementationNone is VaultStorage {
         // Update the staked amount for 'dTokenId' and the total staked amount
         stAmounts[dTokenId] += mintedSt;
         stTotalAmount += mintedSt;
+
+        // check cap
+        if (isTrader(dTokenId)) {
+            tradersTotalAssetAmount += amount;
+            uint256 price = IOracle(oracle).getValue(oracleId).itou();
+            if (
+                tradersTotalAssetAmount > tradersAssetAmountCap ||
+                tradersTotalAssetAmount * price > tradersAssetValueCap * (10 ** asset.decimals())
+            ) {
+                revert ExceedAssetCap();
+            }
+        }
     }
 
     /**
@@ -107,6 +141,10 @@ contract VaultImplementationNone is VaultStorage {
         stTotalAmount -= burnedSt;
 
         asset.transferOut(gateway, redeemedAmount);
+
+        if (isTrader(dTokenId)) {
+            tradersTotalAssetAmount -= redeemedAmount;
+        }
     }
 
 }
